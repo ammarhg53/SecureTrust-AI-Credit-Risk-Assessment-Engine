@@ -107,4 +107,3 @@ This system predicts whether a loan should be **APPROVED** or **REJECTED**, enab
 **Ammar Husain Gheewala**  
 Aspiring AI Engineer | FinTech Enthusiast
 
-## 📁 Project Structure
