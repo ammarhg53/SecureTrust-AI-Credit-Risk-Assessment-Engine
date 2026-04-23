@@ -2,7 +2,7 @@
 ╔══════════════════════════════════════════════════════════════════════════════╗
 ║              CREDITWISE LOAN APPROVAL PREDICTION SYSTEM                     ║
 ║              Industry-Grade Machine Learning Project                        ║
-║              Author: [Your Name] | Domain: FinTech / Credit Risk            ║
+║              Author: AMMAR HUSAIN GHEEWALA | Domain: FinTech / Credit Risk            ║
 ╚══════════════════════════════════════════════════════════════════════════════╝
 
 PROJECT OVERVIEW:
