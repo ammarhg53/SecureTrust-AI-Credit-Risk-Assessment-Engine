@@ -633,69 +633,8 @@ with tab3:
             plt.close()
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# TAB 4: INTERVIEW GUIDE
-# ══════════════════════════════════════════════════════════════════════════════
-
-with tab4:
-    st.markdown("""
-    ## 💼 How to Explain This Project in an Interview
-
-    ---
-
-    ### 🎤 30-Second Elevator Pitch
-    > *"I built CreditWise, an intelligent loan approval prediction system for a bank. It uses
-    historical applicant data to predict whether a loan should be approved or rejected.
-    I trained three models — Logistic Regression, Naive Bayes, and KNN — and selected the best
-    based on Precision, because in banking, approving a bad loan causes real financial loss.
-    I also built a Streamlit UI so anyone can input applicant details and get a real-time decision."*
-
-    ---
-
-    ### ❓ Common HR/Technical Questions
-
-    **Q1: Why did you choose Precision as your main metric?**
-    > In loan approval, a False Positive (approving a bad loan) directly causes financial loss
-    to the bank. This is a Type I Error. Precision = TP / (TP + FP) directly measures how many
-    of our "approved" predictions were actually safe. By maximizing Precision, we minimize bad loans.
-
-    **Q2: What is a Type I Error in this project?**
-    > Type I Error = False Positive = Approving a loan that should be rejected.
-    This is worse than a Type II Error (rejecting a good loan) because it causes
-    actual monetary loss, not just missed business.
-
-    **Q3: Why did you square DTI_Ratio and Credit_Score?**
-    > Squared features capture non-linear relationships. A very high DTI doesn't
-    just linearly increase risk — it exponentially signals danger. Squaring amplifies
-    the difference between borderline and extreme values, giving the model stronger signals.
-
-    **Q4: Why StandardScaler?**
-    > KNN and Logistic Regression are distance/gradient-based. Without scaling,
-    features with large ranges (like Income at 50,000) dominate over small-range
-    features (like Dependents = 2). StandardScaler normalizes all to zero mean,
-    unit variance.
-
-    **Q5: What is stratified train-test split?**
-    > It ensures the proportion of approved and rejected loans is the same in both
-    train and test sets. Without this, the model might train on mostly rejected loans
-    and be biased.
-
-    **Q6: Why OneHotEncoder with drop='first'?**
-    > To avoid the dummy variable trap (multicollinearity). If we one-hot encode
-    "Gender" into Male and Female, both together give the same info. Dropping one
-    makes them independent.
-
-    **Q7: What improvements would you make with more time?**
-    > 1. XGBoost / Random Forest for better accuracy
-    > 2. SMOTE for handling class imbalance
-    > 3. SHAP values for model explainability
-    > 4. Model deployment on AWS/GCP
-    > 5. A/B testing in production
-
-    ---
 
 
-""")
 # ─────────────────────────────────────────────────────────────────────────────
 # FOOTER
 # ─────────────────────────────────────────────────────────────────────────────
@@ -704,7 +643,7 @@ st.markdown("---")
 st.markdown(
     "<center style='color:#5f7a8a;font-size:0.8rem'>"
     "CreditWise Loan Approval System · Built with Scikit-Learn + Streamlit · "
-    "SecureTrust Bank · ML Minor Project"
+    "SecureTrust Bank · ML Minor Project Ammar Husain Gheewala"
     "</center>",
     unsafe_allow_html=True
 )
