@@ -1,6 +1,7 @@
 """
 ╔══════════════════════════════════════════════════════════════════╗
-║          STREAMLIT INTERACTIVE DASHBOARD           ║
+║          STREAMLIT INTERACTIVE DASHBOARD                         ║
+║          CreditWise — Loan Approval System                       ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
@@ -9,7 +10,6 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-import os
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder, OneHotEncoder
@@ -44,7 +44,7 @@ st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700&display=swap');
 
-    html, body, [class*="css"]  {
+    html, body, [class*="css"] {
         font-family: 'Sora', sans-serif;
     }
 
@@ -174,7 +174,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # HEADER
 # ─────────────────────────────────────────────────────────────────────────────
@@ -186,18 +185,16 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-
 # ─────────────────────────────────────────────────────────────────────────────
-# SIDEBAR — Upload & Settings
+# SIDEBAR — Settings only (no file upload)
 # ─────────────────────────────────────────────────────────────────────────────
 
 with st.sidebar:
     st.markdown("### ⚙️ Settings")
-    uploaded_file = st.file_uploader("📂 Upload Dataset (CSV)", type=["csv"])
-    threshold = st.slider("🎯 Decision Threshold", 0.30, 0.90, 0.50, 0.05,
-                          help="Higher = More conservative (fewer approvals, higher precision)")
+    threshold   = st.slider("🎯 Decision Threshold", 0.30, 0.90, 0.50, 0.05,
+                             help="Higher = More conservative (fewer approvals, higher precision)")
     n_neighbors = st.slider("KNN — Neighbors (k)", 3, 15, 7, 2)
-    show_eda = st.checkbox("Show EDA Section", value=True)
+    show_eda    = st.checkbox("Show EDA Section", value=True)
 
     st.markdown("---")
     st.markdown("**📌 About Threshold**")
@@ -207,45 +204,54 @@ with st.sidebar:
         "at the cost of some false rejections."
     )
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # LOAD & PREPROCESS (cached)
 # ─────────────────────────────────────────────────────────────────────────────
 
 @st.cache_data
-def load_and_preprocess(file_bytes, _n_neighbors):
-    """Load data, preprocess, and train all models."""
-    df = pd.read_csv("loan_approval_data.csv") 
+def load_and_preprocess(_n_neighbors):
+    """
+    Load loan_approval_data.csv from root directory, preprocess features,
+    train all three models, and return everything needed for the UI.
+    """
+
+    # ── Load ─────────────────────────────────────────────────────────────────
+    df     = pd.read_csv("loan_approval_data.csv")
     raw_df = df.copy()
 
-    # Impute
+    # ── Impute missing values ─────────────────────────────────────────────────
     num_cols = df.select_dtypes("number").columns
     cat_cols = df.select_dtypes("object").columns
     df[num_cols] = SimpleImputer(strategy="mean").fit_transform(df[num_cols])
     df[cat_cols] = SimpleImputer(strategy="most_frequent").fit_transform(df[cat_cols])
 
-    # Drop ID
+    # ── Drop identifier column ────────────────────────────────────────────────
     if "Applicant_ID" in df.columns:
         df.drop("Applicant_ID", axis=1, inplace=True)
 
-    # Encode
+    # ── Label encode ordinal / target ─────────────────────────────────────────
     le = LabelEncoder()
     df["Education_Level"] = le.fit_transform(df["Education_Level"])
     df["Loan_Approved"]   = le.fit_transform(df["Loan_Approved"])
 
-    ohe_cols = ["Employment_Status", "Marital_Status", "Loan_Purpose",
-                "Property_Area", "Gender", "Employer_Category"]
+    # ── One-Hot encode nominal categoricals ───────────────────────────────────
+    ohe_cols = [
+        "Employment_Status", "Marital_Status", "Loan_Purpose",
+        "Property_Area", "Gender", "Employer_Category"
+    ]
     oh = OneHotEncoder(drop="first", sparse_output=False, handle_unknown="ignore")
-    enc_df = pd.DataFrame(oh.fit_transform(df[ohe_cols]),
-                          columns=oh.get_feature_names_out(ohe_cols),
-                          index=df.index)
+    enc_arr = oh.fit_transform(df[ohe_cols])
+    enc_df  = pd.DataFrame(enc_arr,
+                           columns=oh.get_feature_names_out(ohe_cols),
+                           index=df.index)
     df = pd.concat([df.drop(columns=ohe_cols), enc_df], axis=1)
 
-    # Feature engineering
+    # ── Feature engineering: squared terms to capture non-linearity ───────────
     df["DTI_Ratio_sq"]    = df["DTI_Ratio"] ** 2
     df["Credit_Score_sq"] = df["Credit_Score"] ** 2
     df.drop(["DTI_Ratio", "Credit_Score"], axis=1, inplace=True)
 
+    # ── Train / test split ────────────────────────────────────────────────────
     X = df.drop("Loan_Approved", axis=1)
     y = df["Loan_Approved"]
 
@@ -253,22 +259,26 @@ def load_and_preprocess(file_bytes, _n_neighbors):
         X, y, test_size=0.2, random_state=42, stratify=y
     )
 
-    scaler = StandardScaler()
+    # ── Scale: fit only on train, transform both ───────────────────────────────
+    scaler    = StandardScaler()
     X_train_s = scaler.fit_transform(X_train)
     X_test_s  = scaler.transform(X_test)
 
+    # ── Train models ──────────────────────────────────────────────────────────
     models = {
-        "Logistic Regression": LogisticRegression(max_iter=100000, random_state=42),
-        "Naive Bayes"        : GaussianNB(),
-        f"KNN (k={_n_neighbors})": KNeighborsClassifier(n_neighbors=_n_neighbors)
+        "Logistic Regression"    : LogisticRegression(max_iter=100000, random_state=42),
+        "Naive Bayes"            : GaussianNB(),
+        f"KNN (k={_n_neighbors})": KNeighborsClassifier(n_neighbors=_n_neighbors),
     }
 
     results = []
     trained = {}
+
     for name, m in models.items():
         m.fit(X_train_s, y_train)
-        yp = m.predict(X_test_s)
+        yp    = m.predict(X_test_s)
         yprob = m.predict_proba(X_test_s)[:, 1] if hasattr(m, "predict_proba") else None
+
         results.append({
             "Model"    : name,
             "Accuracy" : round(accuracy_score(y_test, yp), 4),
@@ -279,27 +289,33 @@ def load_and_preprocess(file_bytes, _n_neighbors):
         })
         trained[name] = (m, yp)
 
-    results_df  = pd.DataFrame(results).set_index("Model")
-    best_name   = results_df["Precision"].idxmax()
-    best_model  = trained[best_name][0]
+    results_df = pd.DataFrame(results).set_index("Model")
 
-    return (raw_df, X_train_s, X_test_s, y_train, y_test,
-            scaler, oh, X.columns.tolist(), ohe_cols,
-            results_df, best_model, best_name, trained)
+    # ── Select best model by Precision ────────────────────────────────────────
+    best_name  = results_df["Precision"].idxmax()
+    best_model = trained[best_name][0]
+
+    return (
+        raw_df,
+        X_train_s, X_test_s,
+        y_train, y_test,
+        scaler, oh,
+        X.columns.tolist(), ohe_cols,
+        results_df, best_model, best_name, trained
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# MAIN CONTENT
+# LOAD & TRAIN
 # ─────────────────────────────────────────────────────────────────────────────
 
-
-# ── Load & Train ─────────────────────────────────────────────────────────────
-with st.spinner("Training models... please wait"):
-    (raw_df, X_train_s, X_test_s, y_train, y_test,
-     scaler, oh, feature_cols, ohe_cols,
-     results_df, best_model, best_name, trained) = load_and_preprocess(
-         uploaded_file.getvalue(), n_neighbors
-     )
+with st.spinner("Training models… please wait"):
+    (raw_df,
+     X_train_s, X_test_s,
+     y_train, y_test,
+     scaler, oh,
+     feature_cols, ohe_cols,
+     results_df, best_model, best_name, trained) = load_and_preprocess(n_neighbors)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TABS
@@ -308,34 +324,41 @@ with st.spinner("Training models... please wait"):
 tab1, tab2, tab3 = st.tabs([
     "📊 EDA & Insights",
     "🤖 Model Results",
-    "🎯 Predict Loan"])
-
+    "🎯 Predict Loan",
+])
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 1: EDA
+# TAB 1 — EDA
 # ══════════════════════════════════════════════════════════════════════════════
 
 with tab1:
     if not show_eda:
         st.info("EDA is hidden. Enable it in the sidebar.")
     else:
-        st.markdown('<div class="section-title">📊 Dataset Overview</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">📊 Dataset Overview</div>',
+                    unsafe_allow_html=True)
 
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Total Records",  f"{raw_df.shape[0]:,}")
-        c2.metric("Features",       f"{raw_df.shape[1]-1}")
-        c3.metric("Approval Rate",  f"{(raw_df['Loan_Approved'].value_counts(normalize=True).get(1,0)*100):.1f}%")
+        c2.metric("Features",       f"{raw_df.shape[1] - 1}")
+        c3.metric("Approval Rate",
+                  f"{raw_df['Loan_Approved'].value_counts(normalize=True).get(1, 0) * 100:.1f}%")
         c4.metric("Missing Values", f"{raw_df.isnull().sum().sum()}")
 
-        st.markdown('<div class="section-title">Target Distribution</div>', unsafe_allow_html=True)
+        # ── Target distribution ───────────────────────────────────────────────
+        st.markdown('<div class="section-title">Target Distribution</div>',
+                    unsafe_allow_html=True)
         col1, col2 = st.columns(2)
 
         with col1:
             fig, ax = plt.subplots(figsize=(5, 4), facecolor="#0d1b2a")
             ax.set_facecolor("#0d1b2a")
             counts = raw_df["Loan_Approved"].value_counts()
-            ax.pie(counts, labels=["Rejected", "Approved"], autopct="%1.1f%%",
-                   colors=["#e74c3c", "#2ecc71"], startangle=90,
+            ax.pie(counts,
+                   labels=["Rejected", "Approved"],
+                   autopct="%1.1f%%",
+                   colors=["#e74c3c", "#2ecc71"],
+                   startangle=90,
                    wedgeprops=dict(edgecolor="#0d1b2a", linewidth=2),
                    textprops={"color": "white"})
             ax.set_title("Loan Approval Split", color="white", fontsize=12)
@@ -345,17 +368,20 @@ with tab1:
         with col2:
             fig, ax = plt.subplots(figsize=(5, 4), facecolor="#0d1b2a")
             ax.set_facecolor("#1a2332")
-            sns.countplot(data=raw_df, x="Loan_Approved", palette=["#e74c3c", "#2ecc71"], ax=ax)
+            sns.countplot(data=raw_df, x="Loan_Approved",
+                          palette=["#e74c3c", "#2ecc71"], ax=ax)
             ax.set_xticklabels(["Rejected", "Approved"], color="white")
             ax.tick_params(colors="white")
             ax.set_title("Count Plot", color="white")
             ax.set_xlabel("", color="white")
-            for spine in ax.spines.values(): spine.set_edgecolor("#2d3f55")
+            for spine in ax.spines.values():
+                spine.set_edgecolor("#2d3f55")
             st.pyplot(fig)
             plt.close()
 
-        # Income & Credit Score
-        st.markdown('<div class="section-title">Financial Features Analysis</div>', unsafe_allow_html=True)
+        # ── Financial feature analysis ────────────────────────────────────────
+        st.markdown('<div class="section-title">Financial Features Analysis</div>',
+                    unsafe_allow_html=True)
         col1, col2 = st.columns(2)
 
         with col1:
@@ -367,7 +393,8 @@ with tab1:
             ax.tick_params(colors="white")
             ax.set_title("Income by Approval", color="white")
             ax.set_xlabel("")
-            for spine in ax.spines.values(): spine.set_edgecolor("#2d3f55")
+            for spine in ax.spines.values():
+                spine.set_edgecolor("#2d3f55")
             st.pyplot(fig)
             plt.close()
             st.caption("📌 Higher income applicants tend to get approved more often.")
@@ -381,13 +408,15 @@ with tab1:
             ax.tick_params(colors="white")
             ax.set_title("Credit Score Distribution", color="white")
             ax.set_xlabel("Credit Score", color="white")
-            for spine in ax.spines.values(): spine.set_edgecolor("#2d3f55")
+            for spine in ax.spines.values():
+                spine.set_edgecolor("#2d3f55")
             st.pyplot(fig)
             plt.close()
             st.caption("📌 Approved applicants cluster at higher credit scores.")
 
-        # Correlation Heatmap
-        st.markdown('<div class="section-title">Correlation Heatmap</div>', unsafe_allow_html=True)
+        # ── Correlation heatmap ───────────────────────────────────────────────
+        st.markdown('<div class="section-title">Correlation Heatmap</div>',
+                    unsafe_allow_html=True)
         num_df = raw_df.select_dtypes("number")
         fig, ax = plt.subplots(figsize=(12, 7), facecolor="#0d1b2a")
         ax.set_facecolor("#0d1b2a")
@@ -399,65 +428,73 @@ with tab1:
         ax.tick_params(colors="white")
         st.pyplot(fig)
         plt.close()
-        st.caption("📌 Correlated features (>0.8) may cause multicollinearity. "
-                   "DTI_Ratio and Credit_Score are squared to capture non-linear effects.")
-
+        st.caption(
+            "📌 Correlated features (>0.8) may cause multicollinearity. "
+            "DTI_Ratio and Credit_Score are squared to capture non-linear effects."
+        )
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 2: MODEL RESULTS
+# TAB 2 — MODEL RESULTS
 # ══════════════════════════════════════════════════════════════════════════════
 
 with tab2:
     st.markdown('<div class="section-title">🤖 Model Performance Comparison</div>',
                 unsafe_allow_html=True)
 
-    # Best model highlight
     st.success(f"🏆 **Best Model: {best_name}** (selected by highest Precision)")
 
     # Metrics table
     st.dataframe(
         results_df.style
-        .highlight_max(axis=0, color="#1a4d2e")
-        .format("{:.4f}"),
+            .highlight_max(axis=0, color="#1a4d2e")
+            .format("{:.4f}"),
         use_container_width=True
     )
 
     st.markdown("""
-    **Metric Explanations:**
-    - **Accuracy** — % of total correct predictions
-    - **Precision** ⭐ — Of all loans predicted Approved, how many were actually good? (KEY: minimizes Type I Error)
-    - **Recall** — Of all actual good loans, how many did we catch?
-    - **F1 Score** — Balance between Precision and Recall
-    - **AUC** — Overall ability to distinguish approved vs rejected
-    """)
+**Metric Explanations:**
+- **Accuracy** — % of total correct predictions
+- **Precision** ⭐ — Of all loans predicted Approved, how many were actually good? (KEY: minimizes Type I Error)
+- **Recall** — Of all actual good loans, how many did we catch?
+- **F1 Score** — Balance between Precision and Recall
+- **AUC** — Overall ability to distinguish approved vs rejected
+""")
 
-    # Bar chart
-    st.markdown('<div class="section-title">Visual Comparison</div>', unsafe_allow_html=True)
+    # ── Bar chart comparison ──────────────────────────────────────────────────
+    st.markdown('<div class="section-title">Visual Comparison</div>',
+                unsafe_allow_html=True)
     fig, ax = plt.subplots(figsize=(11, 5), facecolor="#0d1b2a")
     ax.set_facecolor("#1a2332")
-    x = np.arange(len(results_df))
-    w = 0.2
+    x       = np.arange(len(results_df))
+    w       = 0.2
     metrics = ["Accuracy", "Precision", "Recall", "F1"]
     colors  = ["#3498db", "#e74c3c", "#2ecc71", "#f39c12"]
+
     for i, (m, c) in enumerate(zip(metrics, colors)):
-        bars = ax.bar(x + i * w, results_df[m], w, label=m, color=c, edgecolor="#0d1b2a")
+        bars = ax.bar(x + i * w, results_df[m], w, label=m,
+                      color=c, edgecolor="#0d1b2a")
         for b in bars:
-            ax.text(b.get_x() + b.get_width()/2, b.get_height() + 0.005,
-                    f"{b.get_height():.2f}", ha="center", va="bottom",
+            ax.text(b.get_x() + b.get_width() / 2,
+                    b.get_height() + 0.005,
+                    f"{b.get_height():.2f}",
+                    ha="center", va="bottom",
                     fontsize=7.5, color="white")
+
     ax.set_xticks(x + w * 1.5)
     ax.set_xticklabels(results_df.index, color="white", fontsize=10)
     ax.set_ylim(0, 1.15)
     ax.tick_params(colors="white")
     ax.legend(fontsize=9, facecolor="#1a2332", labelcolor="white")
     ax.axhline(0.8, linestyle="--", color="#5f7a8a", linewidth=1, alpha=0.7)
-    for spine in ax.spines.values(): spine.set_edgecolor("#2d3f55")
+    for spine in ax.spines.values():
+        spine.set_edgecolor("#2d3f55")
     ax.set_title("Model Metrics Comparison", color="white", fontsize=13)
     st.pyplot(fig)
     plt.close()
 
-    # Confusion matrices
-    st.markdown('<div class="section-title">Confusion Matrices</div>', unsafe_allow_html=True)
+    # ── Confusion matrices ────────────────────────────────────────────────────
+    st.markdown('<div class="section-title">Confusion Matrices</div>',
+                unsafe_allow_html=True)
     fig, axes = plt.subplots(1, 3, figsize=(15, 4), facecolor="#0d1b2a")
     for ax, (name, (model, yp)) in zip(axes, trained.items()):
         cm = confusion_matrix(y_test, yp)
@@ -471,12 +508,13 @@ with tab2:
     plt.tight_layout()
     st.pyplot(fig)
     plt.close()
-    st.caption("📌 FP (top-right) = Bad loans approved → financial risk. "
-               "We minimize FP by maximizing Precision.")
-
+    st.caption(
+        "📌 FP (top-right) = Bad loans approved → financial risk. "
+        "We minimize FP by maximizing Precision."
+    )
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 3: PREDICTION
+# TAB 3 — PREDICTION
 # ══════════════════════════════════════════════════════════════════════════════
 
 with tab3:
@@ -489,39 +527,39 @@ with tab3:
 
         with c1:
             st.markdown("**👤 Personal Info**")
-            age         = st.number_input("Age", 18, 75, 32)
-            gender      = st.selectbox("Gender", ["Male", "Female"])
-            marital     = st.selectbox("Marital Status", ["Married", "Single"])
-            dependents  = st.number_input("Dependents", 0, 10, 1)
-            education   = st.selectbox("Education Level",
-                                       ["Graduate", "Postgraduate", "Undergraduate"])
+            age        = st.number_input("Age", 18, 75, 32)
+            gender     = st.selectbox("Gender", ["Male", "Female"])
+            marital    = st.selectbox("Marital Status", ["Married", "Single"])
+            dependents = st.number_input("Dependents", 0, 10, 1)
+            education  = st.selectbox("Education Level",
+                                      ["Graduate", "Postgraduate", "Undergraduate"])
 
         with c2:
             st.markdown("**💼 Employment & Income**")
-            emp_status  = st.selectbox("Employment Status",
-                                       ["Salaried", "Self-Employed", "Business"])
-            employer    = st.selectbox("Employer Category", ["Govt", "Private", "Self"])
-            income      = st.number_input("Monthly Income (₹)", 5000, 500000, 55000, 1000)
-            co_income   = st.number_input("Co-applicant Income (₹)", 0, 300000, 15000, 1000)
-            savings     = st.number_input("Savings (₹)", 0, 1000000, 25000, 1000)
+            emp_status = st.selectbox("Employment Status",
+                                      ["Salaried", "Self-Employed", "Business"])
+            employer   = st.selectbox("Employer Category", ["Govt", "Private", "Self"])
+            income     = st.number_input("Monthly Income (₹)", 5000, 500000, 55000, 1000)
+            co_income  = st.number_input("Co-applicant Income (₹)", 0, 300000, 15000, 1000)
+            savings    = st.number_input("Savings (₹)", 0, 1000000, 25000, 1000)
 
         with c3:
             st.markdown("**🏦 Loan Details**")
-            loan_amount = st.number_input("Loan Amount (₹)", 10000, 5000000, 200000, 5000)
-            loan_term   = st.number_input("Loan Term (months)", 6, 360, 60)
-            loan_purpose= st.selectbox("Loan Purpose",
-                                       ["Home", "Education", "Personal", "Business"])
-            prop_area   = st.selectbox("Property Area",
-                                       ["Urban", "Semi-Urban", "Rural"])
-            collateral  = st.number_input("Collateral Value (₹)", 0, 5000000, 60000, 5000)
-            credit_score= st.slider("Credit Score", 300, 900, 720)
-            dti_ratio   = st.slider("DTI Ratio", 0.05, 1.0, 0.28, 0.01)
+            loan_amount    = st.number_input("Loan Amount (₹)", 10000, 5000000, 200000, 5000)
+            loan_term      = st.number_input("Loan Term (months)", 6, 360, 60)
+            loan_purpose   = st.selectbox("Loan Purpose",
+                                          ["Home", "Education", "Personal", "Business"])
+            prop_area      = st.selectbox("Property Area",
+                                          ["Urban", "Semi-Urban", "Rural"])
+            collateral     = st.number_input("Collateral Value (₹)", 0, 5000000, 60000, 5000)
+            credit_score   = st.slider("Credit Score", 300, 900, 720)
+            dti_ratio      = st.slider("DTI Ratio", 0.05, 1.0, 0.28, 0.01)
             existing_loans = st.number_input("Existing Loans", 0, 10, 1)
 
         submitted = st.form_submit_button("🔍 Predict Loan Approval")
 
+    # ── Prediction logic ──────────────────────────────────────────────────────
     if submitted:
-        # Education encoding map
         edu_map = {"Graduate": 1, "Postgraduate": 2, "Undergraduate": 0}
 
         input_data = {
@@ -542,21 +580,27 @@ with tab3:
             "Loan_Purpose"      : loan_purpose,
             "Property_Area"     : prop_area,
             "Gender"            : gender,
-            "Employer_Category" : employer
+            "Employer_Category" : employer,
         }
 
-        # Preprocess & predict
+        # Build input DataFrame and apply same feature engineering
         input_df = pd.DataFrame([input_data])
         input_df["DTI_Ratio_sq"]    = input_df["DTI_Ratio"] ** 2
         input_df["Credit_Score_sq"] = input_df["Credit_Score"] ** 2
         input_df.drop(["DTI_Ratio", "Credit_Score"], axis=1, inplace=True)
 
-        enc = oh.transform(input_df[ohe_cols])
-        enc_df = pd.DataFrame(enc, columns=oh.get_feature_names_out(ohe_cols))
+        # Apply fitted OneHotEncoder (handle_unknown="ignore" handles unseen cats)
+        enc     = oh.transform(input_df[ohe_cols])
+        enc_df  = pd.DataFrame(enc,
+                               columns=oh.get_feature_names_out(ohe_cols),
+                               index=input_df.index)
         input_final = pd.concat([input_df.drop(columns=ohe_cols), enc_df], axis=1)
-        input_final = input_final.reindex(columns=feature_cols, fill_value=0)
+
+        # Align columns to training feature set, fill any missing with 0
+        input_final  = input_final.reindex(columns=feature_cols, fill_value=0)
         input_scaled = scaler.transform(input_final)
 
+        # Predict
         prob     = best_model.predict_proba(input_scaled)[0][1]
         decision = 1 if prob >= threshold else 0
 
@@ -568,7 +612,7 @@ with tab3:
             <div class="approved-banner">
                 ✅ LOAN APPROVED<br>
                 <span style="font-size:1rem;font-weight:400">
-                Approval Probability: {prob*100:.1f}% &nbsp;|&nbsp; Threshold: {threshold*100:.0f}%
+                Approval Probability: {prob * 100:.1f}% &nbsp;|&nbsp; Threshold: {threshold * 100:.0f}%
                 </span>
             </div>""", unsafe_allow_html=True)
         else:
@@ -576,49 +620,52 @@ with tab3:
             <div class="rejected-banner">
                 ❌ LOAN REJECTED<br>
                 <span style="font-size:1rem;font-weight:400">
-                Approval Probability: {prob*100:.1f}% &nbsp;|&nbsp; Threshold: {threshold*100:.0f}%
+                Approval Probability: {prob * 100:.1f}% &nbsp;|&nbsp; Threshold: {threshold * 100:.0f}%
                 </span>
             </div>""", unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # Risk analysis
+        # Risk factor flags + probability gauge
         col1, col2 = st.columns(2)
+
         with col1:
             st.markdown("**Risk Factor Analysis:**")
             flags = []
-            if credit_score < 600: flags.append("⚠️ Low credit score (< 600)")
-            if dti_ratio > 0.5:    flags.append("⚠️ High DTI ratio (> 50%)")
-            if existing_loans > 2: flags.append("⚠️ Multiple existing loans")
-            if income < 20000:     flags.append("⚠️ Below-average income")
+            if credit_score   < 600: flags.append("⚠️ Low credit score (< 600)")
+            if dti_ratio      > 0.5: flags.append("⚠️ High DTI ratio (> 50%)")
+            if existing_loans > 2:   flags.append("⚠️ Multiple existing loans")
+            if income         < 20000: flags.append("⚠️ Below-average income")
 
             if flags:
                 for f in flags:
-                    st.markdown(f'<div class="risk-flag">{f}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="risk-flag">{f}</div>',
+                                unsafe_allow_html=True)
             else:
-                st.markdown('<div class="ok-flag">✅ No major risk flags detected</div>',
-                            unsafe_allow_html=True)
+                st.markdown(
+                    '<div class="ok-flag">✅ No major risk flags detected</div>',
+                    unsafe_allow_html=True
+                )
 
         with col2:
-            # Probability gauge
             fig, ax = plt.subplots(figsize=(4, 4), facecolor="#0d1b2a")
             ax.set_facecolor("#0d1b2a")
             color = "#2ecc71" if prob >= threshold else "#e74c3c"
-            ax.barh(["Approval Probability"], [prob], color=color, height=0.4)
-            ax.barh(["Approval Probability"], [1 - prob], left=[prob],
-                    color="#2d3f55", height=0.4)
-            ax.axvline(x=threshold, color="#f39c12", linestyle="--", linewidth=2,
-                       label=f"Threshold ({threshold})")
+            ax.barh(["Approval Probability"], [prob],
+                    color=color, height=0.4)
+            ax.barh(["Approval Probability"], [1 - prob],
+                    left=[prob], color="#2d3f55", height=0.4)
+            ax.axvline(x=threshold, color="#f39c12", linestyle="--",
+                       linewidth=2, label=f"Threshold ({threshold})")
             ax.set_xlim(0, 1)
-            ax.set_title(f"Probability: {prob*100:.1f}%", color="white", fontsize=12)
+            ax.set_title(f"Probability: {prob * 100:.1f}%",
+                         color="white", fontsize=12)
             ax.tick_params(colors="white")
             ax.legend(fontsize=9, facecolor="#1a2332", labelcolor="white")
-            for spine in ax.spines.values(): spine.set_edgecolor("#2d3f55")
+            for spine in ax.spines.values():
+                spine.set_edgecolor("#2d3f55")
             st.pyplot(fig)
             plt.close()
-
-
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # FOOTER
