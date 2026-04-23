@@ -1,7 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════╗
-║          CREDITWISE — STREAMLIT INTERACTIVE DASHBOARD           ║
-║          Run: streamlit run streamlit_app.py                    ║
+║          STREAMLIT INTERACTIVE DASHBOARD           ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
@@ -216,8 +215,7 @@ with st.sidebar:
 @st.cache_data
 def load_and_preprocess(file_bytes, _n_neighbors):
     """Load data, preprocess, and train all models."""
-    import io
-    df = pd.read_csv(io.BytesIO(file_bytes))
+    df = pd.read_csv("loan_approval_data.csv") 
     raw_df = df.copy()
 
     # Impute
@@ -294,17 +292,6 @@ def load_and_preprocess(file_bytes, _n_neighbors):
 # MAIN CONTENT
 # ─────────────────────────────────────────────────────────────────────────────
 
-if uploaded_file is None:
-    st.info("👈 **Please upload your `loan_approval_data.csv` file** using the sidebar to begin.")
-    st.markdown("""
-    #### What this app does:
-    - 🔍 Automatically trains **3 ML models** on your loan data
-    - 📊 Shows **EDA charts** with business insights
-    - 🏆 Selects the **best model** based on Precision (minimizes bad loan approvals)
-    - 🎯 Lets you **predict loan approval** for any applicant in real-time
-    - ⚙️ Supports **threshold tuning** for precision control
-    """)
-    st.stop()
 
 # ── Load & Train ─────────────────────────────────────────────────────────────
 with st.spinner("Training models... please wait"):
@@ -318,12 +305,10 @@ with st.spinner("Training models... please wait"):
 # TABS
 # ─────────────────────────────────────────────────────────────────────────────
 
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3 = st.tabs([
     "📊 EDA & Insights",
     "🤖 Model Results",
-    "🎯 Predict Loan",
-    "💼 Interview Guide"
-])
+    "🎯 Predict Loan"])
 
 
 # ══════════════════════════════════════════════════════════════════════════════
