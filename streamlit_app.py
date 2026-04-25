@@ -11,8 +11,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import seaborn as sns
-import io
-import requests
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, LabelEncoder, OneHotEncoder
@@ -362,12 +360,10 @@ st.markdown("""
 with st.sidebar:
     st.markdown("### ⚙️ Model Settings")
 
-    GITHUB_CSV_URL = "https://raw.githubusercontent.com/ammarhg53/SecureTrust-AI-Credit-Risk-Assessment-Engine/refs/heads/main/loan_approval_data.csv"
-    data_url = "https://raw.githubusercontent.com/ammarhg53/SecureTrust-AI-Credit-Risk-Assessment-Engine/refs/heads/main/loan_approval_data.csv"
-    threshold  = st.slider("🎯 Decision Threshold", 0.30, 0.90, 0.50, 0.05,
-                           help="Higher = More conservative. Raises precision, may reduce recall.")
+    threshold   = st.slider("🎯 Decision Threshold", 0.30, 0.90, 0.50, 0.05,
+                            help="Higher = More conservative. Raises precision, may reduce recall.")
     n_neighbors = st.slider("KNN — Neighbors (k)", 3, 15, 7, 2)
-    show_eda   = st.checkbox("Show Full EDA Section", value=True)
+    show_eda    = st.checkbox("Show Full EDA Section", value=True)
 
     st.markdown("---")
     st.markdown("**📌 Threshold Guide**")
@@ -382,35 +378,80 @@ with st.sidebar:
 # LOAD & PREPROCESS (cached)
 # ─────────────────────────────────────────────────────────────────────────────
 
+CSV_PATH = "loan_approval_data.csv"   # same folder as streamlit_app.py
+
 @st.cache_data
-def load_and_preprocess(url: str, _n_neighbors: int):
-    """Fetch data from GitHub, preprocess, and train all models."""
+def load_and_preprocess(_n_neighbors: int):
+    """Load local CSV, preprocess, and train all models."""
 
-    # ── Fetch CSV ─────────────────────────────────────────────────────────────
+    # ── Load CSV from same directory ─────────────────────────────────────────
     try:
-        resp = requests.get(url, timeout=15)
-        resp.raise_for_status()
-        df = pd.read_csv(io.StringIO(resp.text))
-    except Exception as e:
-        raise RuntimeError(f"Could not fetch dataset: {e}")
+        df = pd.read_csv(CSV_PATH)
+    except FileNotFoundError:
+        raise RuntimeError(
+            f"'{CSV_PATH}' not found. Make sure loan_approval_data.csv "
+            "is in the same folder as streamlit_app.py."
+        )
 
-    # ── Normalise Loan_Approved FIRST on the raw string column ───────────────
-    # Must happen before any imputer or LabelEncoder touches the column.
-    # Handles: "Yes"/"No", "Y"/"N", "Approved"/"Rejected", 1/0, 1.0/0.0, "1"/"0"
+    # ── Normalise Loan_Approved FIRST ────────────────────────────────────────
+    # Strategy: try numeric conversion first (handles 1/0, 1.0/0.0, "1"/"0").
+    # Only fall back to string mapping if numeric conversion fails entirely.
     def normalise_target(series: pd.Series) -> pd.Series:
         s = series.copy()
-        if s.dtype == object:
-            mapping = {
-                "yes": 1, "no": 0,
-                "y": 1,   "n": 0,
-                "approved": 1, "rejected": 0,
-                "1": 1,   "0": 0,
-            }
-            s = s.str.strip().str.lower().map(mapping)
-        return pd.to_numeric(s, errors="coerce").fillna(0).astype(int)
+
+        # Step 1: try direct numeric conversion (works for int/float columns
+        # and string columns like "1"/"0")
+        numeric_attempt = pd.to_numeric(s, errors="coerce")
+        if numeric_attempt.notna().mean() > 0.8:
+            # Most values converted — it's a numeric column
+            result = numeric_attempt.round().fillna(0).astype(int)
+            # Remap any label-encoded values: ensure only 0 and 1 exist
+            # (LabelEncoder might have flipped 0→1 and 1→0)
+            unique_vals = sorted(result.unique())
+            if unique_vals == [0, 1]:
+                return result
+            elif len(unique_vals) == 2:
+                # Map the smaller value → 0, larger → 1
+                lo, hi = unique_vals[0], unique_vals[1]
+                return result.map({lo: 0, hi: 1})
+            else:
+                return result.clip(0, 1)
+
+        # Step 2: string mapping for text labels
+        string_map = {
+            "yes": 1, "no": 0,
+            "y": 1, "n": 0,
+            "approved": 1, "rejected": 0,
+            "approve": 1, "reject": 0,
+            "true": 1, "false": 0,
+            "1": 1, "0": 0,
+        }
+        mapped = s.astype(str).str.strip().str.lower().map(string_map)
+
+        # Validate: if mapping left NaNs, we have an unknown label format
+        if mapped.isna().any():
+            unknown = s.astype(str).str.strip().str.lower()[mapped.isna()].unique()
+            raise RuntimeError(
+                f"Could not map Loan_Approved values to 0/1.\n"
+                f"Unknown values found: {unknown.tolist()}\n"
+                f"All unique values in column: {s.unique().tolist()}\n"
+                f"Please check your CSV's Loan_Approved column."
+            )
+
+        return mapped.astype(int)
 
     df["Loan_Approved"] = normalise_target(df["Loan_Approved"])
-    raw_df = df.copy()          # raw_df already has numeric target
+
+    # Validate both classes exist before doing anything else
+    classes_found = sorted(df["Loan_Approved"].unique())
+    if classes_found != [0, 1]:
+        raise RuntimeError(
+            f"Loan_Approved must contain both 0 (Rejected) and 1 (Approved). "
+            f"Found only: {classes_found}. "
+            f"Raw unique values were: {df['Loan_Approved'].unique().tolist()}"
+        )
+
+    raw_df = df.copy()   # raw_df already has clean numeric target
 
     # ── Impute ────────────────────────────────────────────────────────────────
     # Exclude Loan_Approved from imputation so it stays clean 0/1 ints
@@ -492,7 +533,7 @@ with st.spinner("🔄 Fetching dataset & training models..."):
     try:
         (raw_df, X_train_s, X_test_s, y_train, y_test,
          scaler, oh, feature_cols, ohe_cols,
-         results_df, best_model, best_name, trained) = load_and_preprocess(data_url, n_neighbors)
+         results_df, best_model, best_name, trained) = load_and_preprocess(n_neighbors)
     except Exception as e:
         st.error(f"❌ Failed to load dataset: {e}")
         st.info("Please check the GitHub raw CSV URL in the sidebar.")
