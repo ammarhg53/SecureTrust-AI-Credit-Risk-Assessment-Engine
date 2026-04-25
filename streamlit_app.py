@@ -426,17 +426,23 @@ def load_and_preprocess(_n_neighbors: int):
             "true": 1, "false": 0,
             "1": 1, "0": 0,
         }
-        mapped = s.astype(str).str.strip().str.lower().map(string_map)
+        # Preserve real NaN as NaN (not the string "nan") before mapping
+        cleaned = s.where(s.isna(), s.astype(str).str.strip().str.lower())
+        mapped  = cleaned.map(string_map)
 
-        # Validate: if mapping left NaNs, we have an unknown label format
         if mapped.isna().any():
-            unknown = s.astype(str).str.strip().str.lower()[mapped.isna()].unique()
-            raise RuntimeError(
-                f"Could not map Loan_Approved values to 0/1.\n"
-                f"Unknown values found: {unknown.tolist()}\n"
-                f"All unique values in column: {s.unique().tolist()}\n"
-                f"Please check your CSV's Loan_Approved column."
-            )
+            originally_missing = s.isna()
+            unknown_mask = mapped.isna() & ~originally_missing
+            if unknown_mask.any():
+                unknown = cleaned[unknown_mask].unique()
+                raise RuntimeError(
+                    f"Could not map Loan_Approved to 0/1. "
+                    f"Unknown values: {unknown.tolist()}. "
+                    f"All values in column: {s.unique().tolist()}. "
+                    f"Expected: Yes/No, Y/N, Approved/Rejected, 1/0"
+                )
+            # Original NaN rows → impute with mode (most frequent class)
+            mapped = mapped.fillna(int(mapped.mode()[0]))
 
         return mapped.astype(int)
 
