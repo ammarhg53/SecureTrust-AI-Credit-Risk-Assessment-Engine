@@ -362,6 +362,7 @@ st.markdown("""
 with st.sidebar:
     st.markdown("### ⚙️ Model Settings")
 
+    data_url ="https://raw.githubusercontent.com/ammarhg53/SecureTrust-AI-Credit-Risk-Assessment-Engine/refs/heads/main/loan_approval_data.csv"
 
     threshold  = st.slider("🎯 Decision Threshold", 0.30, 0.90, 0.50, 0.05,
                            help="Higher = More conservative. Raises precision, may reduce recall.")
@@ -387,7 +388,9 @@ def load_and_preprocess(url: str, _n_neighbors: int):
 
     # ── Fetch CSV ─────────────────────────────────────────────────────────────
     try:
-        df = pd.read_csv("loan_approval_data.csv")
+        resp = requests.get(url, timeout=15)
+        resp.raise_for_status()
+        df = pd.read_csv(io.StringIO(resp.text))
     except Exception as e:
         raise RuntimeError(f"Could not fetch dataset: {e}")
 
