@@ -362,8 +362,8 @@ st.markdown("""
 with st.sidebar:
     st.markdown("### ⚙️ Model Settings")
 
-    data_url ="https://raw.githubusercontent.com/ammarhg53/SecureTrust-AI-Credit-Risk-Assessment-Engine/refs/heads/main/loan_approval_data.csv"
-
+    GITHUB_CSV_URL = "https://raw.githubusercontent.com/ammarhg53/SecureTrust-AI-Credit-Risk-Assessment-Engine/refs/heads/main/loan_approval_data.csv"
+    data_url = "https://raw.githubusercontent.com/ammarhg53/SecureTrust-AI-Credit-Risk-Assessment-Engine/refs/heads/main/loan_approval_data.csv"
     threshold  = st.slider("🎯 Decision Threshold", 0.30, 0.90, 0.50, 0.05,
                            help="Higher = More conservative. Raises precision, may reduce recall.")
     n_neighbors = st.slider("KNN — Neighbors (k)", 3, 15, 7, 2)
@@ -394,37 +394,40 @@ def load_and_preprocess(url: str, _n_neighbors: int):
     except Exception as e:
         raise RuntimeError(f"Could not fetch dataset: {e}")
 
-    raw_df = df.copy()
+    # ── Normalise Loan_Approved FIRST on the raw string column ───────────────
+    # Must happen before any imputer or LabelEncoder touches the column.
+    # Handles: "Yes"/"No", "Y"/"N", "Approved"/"Rejected", 1/0, 1.0/0.0, "1"/"0"
+    def normalise_target(series: pd.Series) -> pd.Series:
+        s = series.copy()
+        if s.dtype == object:
+            mapping = {
+                "yes": 1, "no": 0,
+                "y": 1,   "n": 0,
+                "approved": 1, "rejected": 0,
+                "1": 1,   "0": 0,
+            }
+            s = s.str.strip().str.lower().map(mapping)
+        return pd.to_numeric(s, errors="coerce").fillna(0).astype(int)
 
-    # ── Fix Loan_Approved encoding (handle Yes/No OR 1/0) ────────────────────
-    if raw_df["Loan_Approved"].dtype == object:
-        raw_df["Loan_Approved"] = raw_df["Loan_Approved"].map(
-            {"Yes": 1, "No": 0, "Y": 1, "N": 0,
-             "Approved": 1, "Rejected": 0, "1": 1, "0": 0}
-        )
+    df["Loan_Approved"] = normalise_target(df["Loan_Approved"])
+    raw_df = df.copy()          # raw_df already has numeric target
 
     # ── Impute ────────────────────────────────────────────────────────────────
-    num_cols = df.select_dtypes("number").columns
+    # Exclude Loan_Approved from imputation so it stays clean 0/1 ints
+    num_cols = df.select_dtypes("number").columns.difference(["Loan_Approved"])
     cat_cols = df.select_dtypes("object").columns
     df[num_cols] = SimpleImputer(strategy="mean").fit_transform(df[num_cols])
-    df[cat_cols] = SimpleImputer(strategy="most_frequent").fit_transform(df[cat_cols])
+    if len(cat_cols):
+        df[cat_cols] = SimpleImputer(strategy="most_frequent").fit_transform(df[cat_cols])
 
     # ── Drop ID ───────────────────────────────────────────────────────────────
     if "Applicant_ID" in df.columns:
         df.drop("Applicant_ID", axis=1, inplace=True)
 
-    # ── Label Encode ──────────────────────────────────────────────────────────
+    # ── Label Encode Education (ordinal) ──────────────────────────────────────
     le = LabelEncoder()
     df["Education_Level"] = le.fit_transform(df["Education_Level"])
-
-    # Fix target: handle string "Yes"/"No" or already numeric
-    if df["Loan_Approved"].dtype == object:
-        df["Loan_Approved"] = df["Loan_Approved"].map(
-            {"Yes": 1, "No": 0, "Y": 1, "N": 0,
-             "Approved": 1, "Rejected": 0}
-        )
-    else:
-        df["Loan_Approved"] = le.fit_transform(df["Loan_Approved"])
+    # Loan_Approved is already 0/1 int — no further encoding needed
 
     # ── One-Hot Encode ────────────────────────────────────────────────────────
     ohe_cols = ["Employment_Status", "Marital_Status", "Loan_Purpose",
@@ -516,14 +519,8 @@ with tab1:
         st.info("EDA hidden — enable it in the sidebar.")
     else:
         # ── KPI Row ───────────────────────────────────────────────────────────
-        approved_col = raw_df["Loan_Approved"]
-        # Handle both numeric (0/1) and string ("Yes"/"No") columns
-        if approved_col.dtype == object:
-            approved_map = {"Yes": 1, "No": 0, "Y": 1, "N": 0,
-                            "Approved": 1, "Rejected": 0}
-            approved_numeric = approved_col.map(approved_map).fillna(0).astype(int)
-        else:
-            approved_numeric = approved_col.fillna(0).astype(int)
+        # raw_df["Loan_Approved"] is always 0/1 int after normalise_target()
+        approved_numeric = raw_df["Loan_Approved"].astype(int)
 
         approval_rate = approved_numeric.mean() * 100
         missing_vals  = raw_df.isnull().sum().sum()
