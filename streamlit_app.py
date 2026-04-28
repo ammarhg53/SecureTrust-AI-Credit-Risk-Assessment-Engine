@@ -1,7 +1,6 @@
 """
 ╔══════════════════════════════════════════════════════════════════╗
 ║          CREDITWISE — STREAMLIT INTERACTIVE DASHBOARD           ║
-║          Run: streamlit run streamlit_app.py                    ║
 ╚══════════════════════════════════════════════════════════════════╝
 """
 
@@ -549,11 +548,10 @@ with st.spinner("🔄 Fetching dataset & training models..."):
 # TABS
 # ─────────────────────────────────────────────────────────────────────────────
 
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3 = st.tabs([
     "📊  EDA & Insights",
     "🤖  Model Results",
     "🎯  Predict Loan",
-    "💼  Interview Guide"
 ])
 
 
@@ -1062,149 +1060,6 @@ with tab3:
 # TAB 4 — INTERVIEW GUIDE
 # ══════════════════════════════════════════════════════════════════════════════
 
-with tab4:
-    st.markdown("""
-    <div style="background: linear-gradient(135deg, #060b14, #0a1628);
-                border: 1px solid rgba(0,180,255,0.15); border-radius:16px;
-                padding: 1.8rem 2rem; margin-bottom: 1.5rem;">
-        <div style="color:#00b4ff; font-size:0.72rem; font-weight:600;
-                    letter-spacing:2px; text-transform:uppercase; margin-bottom:0.5rem;">
-            Interview Ready
-        </div>
-        <div style="font-family:'Playfair Display',serif; font-size:1.8rem;
-                    color:white; font-weight:800; margin-bottom:0.5rem;">
-            How to Present CreditWise
-        </div>
-        <div style="color:#7a94b0; font-size:0.9rem;">
-            Answers to the most common ML interview questions for this project.
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # Elevator Pitch
-    st.markdown('<div class="section-title">🎤 30-Second Elevator Pitch</div>',
-                unsafe_allow_html=True)
-    st.markdown("""
-    <div style="background:#0d1928; border-left:3px solid #00b4ff;
-                border-radius:8px; padding:1.2rem 1.5rem; color:#c8d8e8;
-                font-size:0.93rem; line-height:1.7; margin-bottom:1.5rem;">
-    <em>"I built CreditWise — an AI-powered loan approval prediction system for SecureTrust Bank.
-    It processes historical applicant data to predict whether a loan should be approved or rejected.
-    I trained three models: Logistic Regression, Naive Bayes, and KNN, then selected the best using
-    Precision — because in banking, approving a bad loan causes direct financial loss (Type I Error).
-    The entire pipeline includes feature engineering, threshold tuning, and a real-time Streamlit
-    dashboard where anyone can input applicant details and get an instant decision."</em>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # Q&A Section
-    st.markdown('<div class="section-title">❓ Technical Interview Q&A</div>',
-                unsafe_allow_html=True)
-
-    qa_pairs = [
-        ("Q1", "Why did you choose Precision as your key metric?",
-         "In loan approval, a False Positive (approving a bad loan) directly causes financial loss — "
-         "this is a Type I Error. Precision = TP / (TP + FP) measures exactly that: of all predicted "
-         "approvals, how many were actually safe? By maximizing Precision, we minimize bad loan approvals. "
-         "A Type II Error (rejecting a good loan) only means lost business — serious, but not an immediate loss."),
-
-        ("Q2", "What is a Type I vs Type II Error in this context?",
-         "Type I Error = False Positive = Approving a bad loan → bank loses money. "
-         "Type II Error = False Negative = Rejecting a good loan → bank loses a customer. "
-         "Type I is more severe because it directly impacts the balance sheet. "
-         "That's why we optimize Precision over Recall."),
-
-        ("Q3", "Why did you square DTI_Ratio and Credit_Score?",
-         "Squared features capture non-linear relationships. A DTI of 0.8 isn't just twice as risky "
-         "as 0.4 — it's exponentially worse. Squaring amplifies the difference between borderline and "
-         "extreme values, giving the model a stronger gradient signal. This is a form of polynomial "
-         "feature engineering without using a polynomial transformer."),
-
-        ("Q4", "Why StandardScaler instead of MinMaxScaler?",
-         "StandardScaler normalizes to zero mean and unit variance. This is critical for KNN "
-         "(distance-based) and Logistic Regression (gradient-based). MinMaxScaler is sensitive to "
-         "outliers — if one income value is ₹10,00,000 and most are ₹50,000, it would compress "
-         "all values into a tiny range. StandardScaler handles outliers more robustly."),
-
-        ("Q5", "What is stratified train-test split and why use it?",
-         "Stratified split ensures that the proportion of approved vs rejected loans is preserved "
-         "in both train and test sets. Without it, by random chance, the test set could have mostly "
-         "one class, making metrics unreliable. With stratify=y, if 60% of data is 'Approved', "
-         "both train and test will also have ~60% approved."),
-
-        ("Q6", "Why OneHotEncoder with drop='first'?",
-         "To avoid the dummy variable trap (multicollinearity). If we encode Gender into Male=1/0 "
-         "and Female=1/0, both columns together are perfectly collinear (Male + Female = 1 always). "
-         "Dropping one column removes this redundancy, making features independent — essential for "
-         "Logistic Regression which assumes no perfect multicollinearity."),
-
-        ("Q7", "What improvements would you make in production?",
-         "1. Gradient Boosting (XGBoost/LightGBM) for 3–5% accuracy gains. "
-         "2. SMOTE oversampling if class imbalance is severe (>70:30 split). "
-         "3. SHAP values for regulatory explainability (banks need to explain rejections legally). "
-         "4. MLflow for experiment tracking and model versioning. "
-         "5. FastAPI + Docker deployment on AWS/GCP. "
-         "6. Monitoring for data drift in production."),
-
-        ("Q8", "Why Logistic Regression as a baseline?",
-         "Logistic Regression is interpretable, fast, and works well when the relationship between "
-         "features and outcome is roughly linear in log-odds. It gives us coefficient values, making "
-         "it explainable to bank regulators. It's also the industry standard baseline — if a complex "
-         "model doesn't outperform LR, it's usually not worth the added complexity."),
-    ]
-
-    col_a, col_b = st.columns(2)
-    for i, (qnum, question, answer) in enumerate(qa_pairs):
-        target_col = col_a if i % 2 == 0 else col_b
-        with target_col:
-            st.markdown(f"""
-            <div class="interview-q">
-                <div class="q-label">{qnum}</div>
-                <div class="q-text">{question}</div>
-                <div class="a-text">{answer}</div>
-            </div>
-            """, unsafe_allow_html=True)
-
-    # Project Structure
-    st.markdown('<div class="section-title">📂 Project Structure</div>',
-                unsafe_allow_html=True)
-    st.code("""creditwise/
-├── creditwise_loan_approval.py   # Main ML pipeline (console output)
-├── streamlit_app.py              # Interactive Streamlit UI
-├── loan_approval_data.csv        # Dataset (hosted on GitHub)
-├── plots/                        # Auto-generated EDA visualizations
-│   ├── 01_target_distribution.png
-│   ├── 02_income_analysis.png
-│   ├── 03_credit_score.png
-│   ├── 04_dti_ratio.png
-│   ├── 05_categorical_features.png
-│   ├── 06_correlation_heatmap.png
-│   ├── 07_model_comparison.png
-│   ├── 08_confusion_matrices.png
-│   └── 09_threshold_tuning.png
-└── README.md""", language="")
-
-    st.markdown('<div class="section-title">🚀 How to Run</div>', unsafe_allow_html=True)
-    st.code("""# 1. Install dependencies
-pip install pandas numpy scikit-learn matplotlib seaborn streamlit requests
-
-# 2. Run main ML pipeline (saves plots, prints console output)
-python creditwise_loan_approval.py
-
-# 3. Launch interactive Streamlit dashboard
-streamlit run streamlit_app.py
-
-# Dataset is auto-loaded from GitHub — no manual upload needed.""", language="bash")
-
-    # Key Formulas
-    st.markdown('<div class="section-title">📐 Key Formulas</div>', unsafe_allow_html=True)
-    col1, col2 = st.columns(2)
-    with col1:
-        st.latex(r"\text{Precision} = \frac{TP}{TP + FP}")
-        st.latex(r"\text{Recall} = \frac{TP}{TP + FN}")
-    with col2:
-        st.latex(r"\text{F1} = \frac{2 \times \text{Precision} \times \text{Recall}}{\text{Precision} + \text{Recall}}")
-        st.latex(r"\text{AUC-ROC} = P(\hat{y}_{pos} > \hat{y}_{neg})")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1214,7 +1069,7 @@ streamlit run streamlit_app.py
 st.markdown("---")
 st.markdown(
     "<center style='color:#3a5570; font-size:0.78rem; font-family:DM Mono,monospace;'>"
-    "CreditWise · Scikit-Learn + Streamlit · SecureTrust Bank · ML Minor Project"
+    "CreditWise · Scikit-Learn + Streamlit · SecureTrust Bank · ML Minor Project . Ammar Gheewala"
     "</center>",
     unsafe_allow_html=True
 )
